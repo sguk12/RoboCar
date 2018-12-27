@@ -51,9 +51,17 @@ Developed with ROB-9457
 #define SPEED_5 5
 
 
-int direction = 1;
-int speed = 5;
-bool brakeOn = false;
+int movementDirection = DIR_FORWARD;
+int nextDirection = DIR_FORWARD;
+int motorSpeed = SPEED_2;
+int nextSpeed = SPEED_2;
+unsigned long millisTillEndOfRoutine = 0;
+unsigned long nextMillisTillEndOfRoutine = 0;
+
+// the below arrays is to implement a low pass filter (debounce? the sensors)
+bool ba_right[5] = {false, false, false, false, false};
+bool ba_left[5] = {false, false, false, false, false};
+bool ba_forward[5] = {false, false, false, false, false};
 
 // these constants are used to allow you to make your motor configuration 
 // line up with function names like forward.  Value can be 1 or -1
@@ -67,6 +75,8 @@ const int offsetB = 50; //the speed will change between 0-10 ~0-250
 Motor motor1 = Motor(AIN1, AIN2, PWMA, offsetA, STBY);
 Motor motor2 = Motor(BIN1, BIN2, PWMB, offsetB, STBY);
 
+byte i=0;
+
 void setup()
 {
   pinMode(SENSOR_FORWARD, INPUT_PULLUP);
@@ -74,62 +84,78 @@ void setup()
   pinMode(SENSOR_RIGHT, INPUT_PULLUP);
 
   delay(3000);
+
+//  Serial.begin(115200);   // Debugging only
 }
 
 
 void loop()
 {
-  bool b_right = digitalRead(SENSOR_RIGHT) ==LOW;
-  bool b_left = digitalRead(SENSOR_LEFT) ==LOW;
-  bool b_forward = digitalRead(SENSOR_FORWARD) ==LOW;
-  if( b_right && b_left || b_forward){
-    //the way is blocked, time to skid and stop
-    if (!brakeOn){
-      left(motor1, motor2, SPEED_2);
-      delay(500);
-      brake(motor1, motor2);
-      delay(1000);
-      brakeOn = true;
+//  Serial.print(F("millisTillEndOfRoutine = "));
+//  Serial.print(millisTillEndOfRoutine);
+//  Serial.print(F(" , Speed = "));
+//  Serial.print(motorSpeed);
+//  Serial.print(F(" , Direction = "));
+//  Serial.println(movementDirection);
+
+  //read the sensors
+  ba_right[i] = digitalRead(SENSOR_RIGHT) == LOW;
+  ba_left[i] = digitalRead(SENSOR_LEFT) == LOW;
+  ba_forward[i] = digitalRead(SENSOR_FORWARD) == LOW;
+  i++;
+  if (i>4) i=0;
+  
+  int millisNow = millis();
+  bool b_right = ba_right[0] && ba_right[2] && ba_right[2] && ba_right[3] && ba_right[4];
+  bool b_left =  ba_left[0] && ba_left[2] && ba_left[2] && ba_left[3] && ba_left[4];
+  bool b_forward =  ba_forward[0] && ba_forward[2] && ba_forward[2] && ba_forward[3] && ba_forward[4];
+
+  if (b_right || b_left || b_forward){
+    
+    if (movementDirection == DIR_FORWARD){
+//      back(motor1, motor2, SPEED_1);
+//      delay(750);
+      // figure out where to turn to
+      if(b_right){
+        //obstacle on the right
+        movementDirection = DIR_LEFT;    
+        motorSpeed = SPEED_2;
+      }else{
+        //obstacle on the left
+        movementDirection = DIR_RIGHT;    
+        motorSpeed = SPEED_2;
+      }
     }
-    speed = SPEED_3;
-    direction = DIR_LEFT;    
-  }else if(b_right && b_forward){
-    //obstacle on the right
-    left(motor1, motor2, SPEED_2);
-    delay(200);
-    speed = SPEED_2;
-    direction = DIR_LEFT;    
-  }else if(b_left && b_forward){
-    //obstacle on the left
-    right(motor1, motor2, SPEED_2);
-    delay(200);
-    speed = SPEED_2;
-    direction = DIR_RIGHT;    
-  }else if(b_right){
-    //obstacle on the right
-    direction = DIR_LEFT;    
-    speed = SPEED_3;
-  }else if(b_left){
-    //obstacle on the right
-    direction = DIR_RIGHT;    
-    speed = SPEED_3;
-  } else {
+  }else{
+    if (movementDirection != DIR_FORWARD){
+      delay(750);
+    }
     //no obstacle -- full speed ahead
-    direction = DIR_FORWARD;
-    speed = SPEED_4;
+    movementDirection = DIR_FORWARD;
+    motorSpeed = SPEED_3;
   }
   
-  if(direction == DIR_FORWARD){
-    forward(motor1, motor2, speed);
-  }else if(direction == DIR_BACKWARD){
-    back(motor1, motor2, speed);
-  }else if(direction == DIR_LEFT){
-    left(motor1, motor2, speed);
-  }else if(direction == DIR_RIGHT){
-    right(motor1, motor2, speed);
+//  Serial.print(F("Speed = "));
+//  Serial.print(motorSpeed);
+//  Serial.print(F(" , Direction = "));
+//  Serial.println(movementDirection);
+
+  if(movementDirection == DIR_FORWARD){
+//    Serial.println(F(" DIR_FORWARD"));
+    forward(motor1, motor2, motorSpeed);
+  }else if(movementDirection == DIR_BACKWARD){
+//    Serial.println(F(" DIR_BACKWARD"));
+    back(motor1, motor2, motorSpeed);
+  }else if(movementDirection == DIR_LEFT){
+//    Serial.println(F(" DIR_LEFT"));
+    left(motor1, motor2, motorSpeed);
+  }else if(movementDirection == DIR_RIGHT){
+//    Serial.println(F(" DIR_RIGHT"));
+    right(motor1, motor2, motorSpeed);
   }else {
+//    Serial.println(F(" BREAK"));
     brake(motor1, motor2);
   }
-    
+
   delay(50);
 }
